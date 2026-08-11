@@ -101,7 +101,7 @@ function AuthSection() {
     return (
       <>
         <NotificationsBell />
-        <UserButton afterSignOutUrl="/" />
+        <UserButton />
       </>
     );
   }

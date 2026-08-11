@@ -1,4 +1,5 @@
 import { ClerkProvider } from '@clerk/nextjs';
+import React from 'react';
 import './globals.css';
 
 export const metadata = {
@@ -6,16 +7,13 @@ export const metadata = {
   description: 'Share and vote on hot takes',
 };
 
-export default function RootLayout({ children }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <ClerkProvider
-      publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-      appearance={{
-        layout: {
-          unsafe_disableDevelopmentModeWarnings: true,
-        },
-      }}
-    >
+    <ClerkProvider>
       <html lang="en">
         <body className="bg-black antialiased">{children}</body>
       </html>
