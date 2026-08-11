@@ -1,0 +1,73 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String         @id
+  username      String
+  email         String         @unique
+  bio           String?        @default("Hot Take Creator 🔥")
+  videos        Video[]
+  comments      Comment[]
+  votes         Vote[]
+  notifications Notification[] @relation("UserNotifications")
+  createdAt     DateTime       @default(now())
+}
+
+model Video {
+  id              String         @id @default(cuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id])
+  type            String         @default("TEXT") // "VIDEO", "IMAGE", "TEXT", "LINK"
+  category        String         @default("General") // "Tech", "Sports", "Politics", "Entertainment", "General"
+  videoUrl        String?
+  imageUrls       String?
+  linkUrl         String?
+  linkTitle       String?
+  linkDescription String?
+  linkImage       String?
+  caption         String
+  agreeCount      Int            @default(0)
+  capCount        Int            @default(0)
+  comments        Comment[]
+  votes           Vote[]
+  notifications   Notification[]
+  createdAt       DateTime       @default(now())
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  text      String
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Vote {
+  id        String   @id @default(cuid())
+  type      String
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String   // Recipient
+  user      User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  actorName String   // Who performed the action
+  type      String   // "VOTE_HOT", "VOTE_CAP", "COMMENT"
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
