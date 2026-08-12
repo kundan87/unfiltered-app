@@ -10,20 +10,49 @@ datasource db {
 
 model User {
   id            String         @id
-  username      String
+  username      String         @unique // Unique username requirement
   email         String         @unique
   bio           String?        @default("Hot Take Creator 🔥")
+  isLive        Boolean        @default(false) // Live status
+  liveRoomId    String?        // Active Live Room/Stream ID
+
   videos        Video[]
   comments      Comment[]
   votes         Vote[]
+  stories       Story[]        // 24-Hour Expiring Stories
+
+  followers     Follows[]      @relation("following")
+  following     Follows[]      @relation("follower")
+
   notifications Notification[] @relation("UserNotifications")
+  createdAt     DateTime       @default(now())
+}
+
+model Follows {
+  followerId  String
+  follower    User     @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User     @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@id([followerId, followingId])
+}
+
+model Story {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mediaUrl  String
+  mediaType String   @default("IMAGE") // "IMAGE", "VIDEO"
+  createdAt DateTime @default(now())
+  expiresAt DateTime
 }
 
 model Video {
   id              String         @id @default(cuid())
   userId          String
-  user            User           @relation(fields: [userId], references: [id])
-  type            String         @default("TEXT") // "VIDEO", "IMAGE", "TEXT", "LINK"
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type            String         @default("TEXT") // "VIDEO", "IMAGE", "TEXT", "LINK", "AUDIO"
   category        String         @default("General") // "Tech", "Sports", "Politics", "Entertainment", "General"
   videoUrl        String?
   imageUrls       String?
@@ -46,17 +75,17 @@ model Comment {
   videoId   String
   video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 }
 
 model Vote {
   id        String   @id @default(cuid())
-  type      String
+  type      String   // "AGREE", "CAP"
   videoId   String
   video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 }
 
@@ -65,9 +94,9 @@ model Notification {
   userId    String   // Recipient
   user      User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
   actorName String   // Who performed the action
-  type      String   // "VOTE_HOT", "VOTE_CAP", "COMMENT"
-  videoId   String
-  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  type      String   // "VOTE_HOT", "VOTE_CAP", "COMMENT", "FOLLOW", "LIVE_START"
+  videoId   String?  // Optional (Live alerts & Follows ke liye videoId ki zarurat nahi hoti)
+  video     Video?   @relation(fields: [videoId], references: [id], onDelete: Cascade)
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
 }
