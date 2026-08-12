@@ -1,8 +1,3 @@
-datasource db {
-  provider = "postgresql"
-  url      = env("postgresql://neondb_owner:npg_8A2nvINeHCRu@ep-long-breeze-ax6uy7h0.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require")
-}
-
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "rhel-openssl-1.0.x", "rhel-openssl-3.0.x"]
@@ -14,15 +9,12 @@ datasource db {
 }
 
 model User {
-  id            String         @id
-  username      String
-  email         String         @unique
-  bio           String?        @default("Hot Take Creator 🔥")
-  videos        Video[]
-  comments      Comment[]
-  votes         Vote[]
-  notifications Notification[] @relation("UserNotifications")
-  createdAt     DateTime       @default(now())
+  id       String    @id
+  username String
+  email    String    @unique
+  bio      String?   @default("Hot Take Creator 🔥")
+  videos   Video[]
+  comments Comment[]
 }
 
 model Video {
