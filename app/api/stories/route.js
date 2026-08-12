@@ -16,18 +16,18 @@ export async function GET() {
 
 export async function POST(req) {
   try {
-    const formData = await req.formData();
-    const file = formData.get('file');
-    const userId = formData.get('userId');
-
-    const mediaUrl = "https://your-storage-url.com/" + file.name; // Replace with your file host URL
-    const mediaType = file.type.startsWith('video') ? 'VIDEO' : 'IMAGE';
+    const { userId, mediaUrl, mediaType } = await req.json();
 
     const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 24); // Expiration: 24 Hours
+    expiresAt.setHours(expiresAt.getHours() + 24); // 24 hours expiry
 
     const story = await prisma.story.create({
-      data: { userId, mediaUrl, mediaType, expiresAt },
+      data: {
+        userId: userId || 'guest',
+        mediaUrl,
+        mediaType: mediaType || 'IMAGE',
+        expiresAt,
+      },
     });
 
     return NextResponse.json({ success: true, story });
