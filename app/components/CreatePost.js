@@ -14,37 +14,67 @@ export default function CreatePost({ onPostSuccess }) {
   const [loadingLink, setLoadingLink] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Live Camera Modal State
+  // Live Camera & Video Recording States
   const [showCamera, setShowCamera] = useState(false);
+  const [cameraMode, setCameraMode] = useState('PHOTO'); // 'PHOTO' | 'VIDEO'
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordTime, setRecordTime] = useState(0);
+
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
+  const timerIntervalRef = useRef(null);
   const galleryInputRef = useRef(null);
 
-  // Open Live Camera Modal (PC Webcam or Mobile Camera)
+  // Open Live Camera (Video + Audio)
   const startCamera = async () => {
     setShowCamera(true);
+    setCameraMode('PHOTO');
+    setIsRecording(false);
+    setRecordTime(0);
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user' },
-        audio: false,
+        audio: true,
       });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
     } catch (err) {
-      alert('Camera access denied or not supported');
-      setShowCamera(false);
+      // Fallback without audio if mic fails
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: false,
+        });
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (e) {
+        alert('Camera or Microphone access denied');
+        setShowCamera(false);
+      }
     }
   };
 
   const stopCamera = () => {
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
     }
     setShowCamera(false);
+    setIsRecording(false);
+    setRecordTime(0);
   };
 
+  // Capture Photo
   const capturePhoto = () => {
     const video = videoRef.current;
     if (!video) return;
@@ -56,9 +86,69 @@ export default function CreatePost({ onPostSuccess }) {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const base64Image = canvas.toDataURL('image/jpeg', 0.7); // Compressed
+    const base64Image = canvas.toDataURL('image/jpeg', 0.8);
     setMedia({ url: base64Image, type: 'IMAGE' });
     stopCamera();
+  };
+
+  // Start Video Recording
+  const startRecording = () => {
+    recordedChunksRef.current = [];
+    const stream = streamRef.current;
+    if (!stream) return;
+
+    let options = { mimeType: 'video/webm' };
+    if (!MediaRecorder.isTypeSupported('video/webm')) {
+      options = { mimeType: 'video/mp4' };
+    }
+
+    try {
+      const mediaRecorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, {
+          type: mediaRecorder.mimeType || 'video/webm',
+        });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setMedia({ url: reader.result, type: 'VIDEO' });
+          stopCamera();
+        };
+        reader.readAsDataURL(blob);
+      };
+
+      mediaRecorder.start(200);
+      setIsRecording(true);
+
+      setRecordTime(0);
+      timerIntervalRef.current = setInterval(() => {
+        setRecordTime((prev) => prev + 1);
+      }, 1000);
+    } catch (err) {
+      alert('Video recording error on this browser.');
+    }
+  };
+
+  // Stop Video Recording
+  const stopRecording = () => {
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleGalleryChange = (e) => {
@@ -197,27 +287,85 @@ export default function CreatePost({ onPostSuccess }) {
         </button>
       </div>
 
-      {/* LIVE CAMERA MODAL POPUP */}
+      {/* LIVE CAMERA & VIDEO RECORDING MODAL */}
       {showCamera && (
         <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4">
-          <div className="relative w-full max-w-sm bg-gray-900 rounded-2xl overflow-hidden border border-gray-800">
-            <video ref={videoRef} autoPlay playsInline className="w-full h-80 object-cover bg-black" />
-            <div className="p-4 flex justify-between items-center bg-gray-900">
+          <div className="relative w-full max-w-sm bg-gray-900 rounded-3xl overflow-hidden border border-gray-800 shadow-2xl">
+            
+            {/* Mode Switcher Tabs */}
+            {!isRecording && (
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex bg-black/60 backdrop-blur-md rounded-full p-1 border border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setCameraMode('PHOTO')}
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition ${
+                    cameraMode === 'PHOTO' ? 'bg-red-600 text-white' : 'text-gray-400'
+                  }`}
+                >
+                  📷 Photo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCameraMode('VIDEO')}
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition ${
+                    cameraMode === 'VIDEO' ? 'bg-red-600 text-white' : 'text-gray-400'
+                  }`}
+                >
+                  📹 Video
+                </button>
+              </div>
+            )}
+
+            {/* Live Recording Badge */}
+            {isRecording && (
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-red-600/90 text-white text-xs font-black px-3 py-1 rounded-full animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-white"></span>
+                <span>REC {formatTime(recordTime)}</span>
+              </div>
+            )}
+
+            {/* Video Viewport */}
+            <video ref={videoRef} autoPlay playsInline muted={isRecording} className="w-full h-80 object-cover bg-black" />
+
+            {/* Bottom Actions */}
+            <div className="p-4 flex justify-between items-center bg-gray-900 border-t border-gray-800">
               <button
                 type="button"
                 onClick={stopCamera}
-                className="text-xs text-gray-400 font-bold px-4 py-2 rounded-full bg-gray-800"
+                disabled={isRecording}
+                className="text-xs text-gray-400 font-bold px-4 py-2 rounded-full bg-gray-800 disabled:opacity-50"
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={capturePhoto}
-                className="w-12 h-12 rounded-full bg-red-600 border-4 border-white flex items-center justify-center shadow-lg"
-              >
-                📸
-              </button>
+
+              {/* Action Button based on Mode */}
+              {cameraMode === 'PHOTO' ? (
+                <button
+                  type="button"
+                  onClick={capturePhoto}
+                  className="w-14 h-14 rounded-full bg-red-600 border-4 border-white flex items-center justify-center text-xl shadow-lg active:scale-95 transition"
+                >
+                  📸
+                </button>
+              ) : !isRecording ? (
+                <button
+                  type="button"
+                  onClick={startRecording}
+                  className="w-14 h-14 rounded-full bg-red-600 border-4 border-white flex items-center justify-center text-xl shadow-lg active:scale-95 transition"
+                >
+                  🔴
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={stopRecording}
+                  className="w-14 h-14 rounded-full bg-white border-4 border-red-600 flex items-center justify-center shadow-lg active:scale-95 transition"
+                >
+                  <span className="w-5 h-5 bg-red-600 rounded-sm"></span>
+                </button>
+              )}
             </div>
+
           </div>
         </div>
       )}
