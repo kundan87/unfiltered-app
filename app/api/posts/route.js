@@ -15,7 +15,7 @@ export async function GET(req) {
       whereClause = {
         OR: [{ type: 'VIDEO' }, { videoUrl: { not: null } }],
       };
-    } else if (category && category !== 'All' && category !== 'all') {
+    } else if (category && category.toLowerCase() !== 'all') {
       whereClause = {
         category: {
           equals: category,
@@ -24,14 +24,16 @@ export async function GET(req) {
       };
     }
 
-    const posts = await prisma.video.findMany({
+    // Try relational query first, fallback to basic query if user relation fails
+    let posts = await prisma.video.findMany({
       where: whereClause,
-      include: {
-        user: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      include: { user: true },
+      orderBy: { createdAt: 'desc' },
+    }).catch(async () => {
+      return await prisma.video.findMany({
+        where: whereClause,
+        orderBy: { createdAt: 'desc' },
+      });
     });
 
     return NextResponse.json({ posts: posts || [] });

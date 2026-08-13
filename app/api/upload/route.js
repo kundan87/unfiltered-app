@@ -7,27 +7,41 @@ export async function POST(req) {
   try {
     const body = await req.json();
     const userId = body.clerkUserId || body.userId;
+    const caption = body.caption || body.content || body.text || '';
+    const category = body.category || 'General';
 
     if (!userId) {
-      return NextResponse.json({ error: 'User ID missing' }, { status: 400 });
+      return NextResponse.json({ error: 'User not authenticated' }, { status: 400 });
     }
 
-    let user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          id: userId,
-          username: `user_${userId.slice(-6)}`,
-          email: `${userId}@unfiltered.app`,
-        },
+    // 1. Safe User Sync
+    let dbUser = null;
+    try {
+      dbUser = await prisma.user.findFirst({
+        where: { OR: [{ id: userId }, { email: `${userId}@unfiltered.app` }] },
       });
+
+      if (!dbUser) {
+        dbUser = await prisma.user.create({
+          data: {
+            id: userId,
+            username: `user_${userId.slice(-6)}`,
+            email: `${userId}@unfiltered.app`,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn('User lookup/creation fallback:', e.message);
     }
 
+    const effectiveUserId = dbUser ? dbUser.id : userId;
+
+    // 2. Create Post in DB
     const newPost = await prisma.video.create({
       data: {
-        userId: user.id,
-        caption: body.caption || body.content || '',
-        category: body.category || 'General',
+        userId: effectiveUserId,
+        caption: caption,
+        category: category,
         type: body.type || (body.videoUrl ? 'VIDEO' : body.linkPreview ? 'LINK' : 'TEXT'),
         videoUrl: body.videoUrl || null,
         imageUrls: body.imageUrls || body.image || null,
@@ -40,7 +54,7 @@ export async function POST(req) {
 
     return NextResponse.json({ success: true, post: newPost });
   } catch (error) {
-    console.error('Upload Error:', error);
-    return NextResponse.json({ error: error.message || 'Failed to save post' }, { status: 500 });
+    console.error('Post Upload Error:', error);
+    return NextResponse.json({ error: error.message || 'Failed to publish take' }, { status: 500 });
   }
 }
