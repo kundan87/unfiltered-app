@@ -14,9 +14,9 @@ export default function CreatePost({ onPostSuccess }) {
   const [loadingLink, setLoadingLink] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Live Camera & Video Recording States (60 Seconds Max)
+  // Live Camera & Video Recording States (1 Min / 60s Max)
   const [showCamera, setShowCamera] = useState(false);
-  const [cameraMode, setCameraMode] = useState('PHOTO'); // 'PHOTO' | 'VIDEO'
+  const [cameraMode, setCameraMode] = useState('PHOTO');
   const [isRecording, setIsRecording] = useState(false);
   const [recordTime, setRecordTime] = useState(0);
 
@@ -29,12 +29,12 @@ export default function CreatePost({ onPostSuccess }) {
 
   // Auto Link Detection in Textarea
   useEffect(() => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urlRegex = /((https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*))/gi;
     const foundUrls = caption.match(urlRegex);
 
     if (foundUrls && foundUrls.length > 0) {
       const urlToFetch = foundUrls[0];
-      if (!linkPreview || linkPreview.url !== urlToFetch) {
+      if (!linkPreview || linkPreview.rawUrl !== urlToFetch) {
         fetchLinkPreview(urlToFetch);
       }
     }
@@ -50,7 +50,7 @@ export default function CreatePost({ onPostSuccess }) {
       });
       const data = await res.json();
       if (res.ok && data.title) {
-        setLinkPreview(data);
+        setLinkPreview({ ...data, rawUrl: targetUrl });
       }
     } catch (err) {
       console.error('Link preview failed', err);
@@ -119,13 +119,11 @@ export default function CreatePost({ onPostSuccess }) {
     stopCamera();
   };
 
-  // 60-Second Compressed Video Recording
   const startRecording = () => {
     recordedChunksRef.current = [];
     const stream = streamRef.current;
     if (!stream) return;
 
-    // 300 Kbps bitrate keeps 1 min video under ~2.2MB
     const options = { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 300000 };
 
     try {

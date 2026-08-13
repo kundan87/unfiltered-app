@@ -3,10 +3,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET() {
   try {
-    const dbStory = prisma.story || prisma.Story;
-    if (!dbStory) return NextResponse.json({ stories: [] });
-
-    const stories = await dbStory.findMany({
+    const stories = await prisma.story.findMany({
       where: {
         expiresAt: { gt: new Date() },
       },
@@ -20,51 +17,48 @@ export async function GET() {
     return NextResponse.json({ stories });
   } catch (error) {
     console.error('GET Stories Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ stories: [] });
   }
 }
 
 export async function POST(req) {
   try {
-    const { userId, mediaUrl, mediaType } = await req.json();
+    const body = await req.json();
+    const { userId, mediaUrl, mediaType } = body;
 
     if (!userId || userId === 'guest') {
       return NextResponse.json({ error: 'Please sign in first' }, { status: 401 });
     }
 
-    const dbUser = prisma.user || prisma.User;
-    const dbStory = prisma.story || prisma.Story;
-
-    if (!dbUser || !dbStory) {
-      return NextResponse.json({ error: 'Database model initialization failed' }, { status: 500 });
+    if (!mediaUrl) {
+      return NextResponse.json({ error: 'Media URL or image is required' }, { status: 400 });
     }
 
-    let user = await dbUser.findUnique({ where: { id: userId } });
-    if (!user) {
-      user = await dbUser.create({
-        data: {
-          id: userId,
-          username: `user_${userId.slice(-6)}`,
-          email: `${userId}@unfiltered.app`,
-        },
-      });
-    }
+    // Auto-create or fetch user in Neon DB to avoid foreign key crash
+    const user = await prisma.user.upsert({
+      where: { id: userId },
+      update: {},
+      create: {
+        id: userId,
+        username: `user_${userId.slice(-6)}`,
+        email: `${userId}@unfiltered.app`,
+      },
+    });
 
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 24);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 Hours validity
 
-    const story = await dbStory.create({
+    const story = await prisma.story.create({
       data: {
         userId: user.id,
-        mediaUrl: mediaUrl || '',
+        mediaUrl: mediaUrl,
         mediaType: mediaType || 'IMAGE',
-        expiresAt,
+        expiresAt: expiresAt,
       },
     });
 
     return NextResponse.json({ success: true, story });
   } catch (error) {
-    console.error('Story API Error:', error);
-    return NextResponse.json({ error: error.message || 'Story upload failed' }, { status: 500 });
+    console.error('Story Upload API Error:', error);
+    return NextResponse.json({ error: error.message || 'Error uploading story' }, { status: 500 });
   }
 }

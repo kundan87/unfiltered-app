@@ -10,41 +10,35 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Please sign in first' }, { status: 401 });
     }
 
-    // Safe Prisma Model Access
-    const dbUser = prisma.user || prisma.User;
-    const dbPost = prisma.post || prisma.Post;
+    // Auto Sync User in DB
+    const user = await prisma.user.upsert({
+      where: { id: clerkUserId },
+      update: {},
+      create: {
+        id: clerkUserId,
+        username: `user_${clerkUserId.slice(-6)}`,
+        email: `${clerkUserId}@unfiltered.app`,
+      },
+    });
 
-    if (!dbUser || !dbPost) {
-      return NextResponse.json({ error: 'Database model initialization failed' }, { status: 500 });
-    }
-
-    // Auto-sync or find user safely
-    let user = await dbUser.findUnique({ where: { id: clerkUserId } });
-    if (!user) {
-      user = await dbUser.create({
-        data: {
-          id: clerkUserId,
-          username: `user_${clerkUserId.slice(-6)}`,
-          email: `${clerkUserId}@unfiltered.app`,
-        },
-      });
-    }
-
-    const post = await dbPost.create({
+    const post = await prisma.video.create({
       data: {
         userId: user.id,
         caption: caption || '',
         category: category || 'General',
         type: type || 'TEXT',
         videoUrl: videoUrl || null,
-        imageUrls: imageUrls ? (Array.isArray(imageUrls) ? imageUrls : [imageUrls]) : [],
-        linkPreview: linkPreview ? JSON.stringify(linkPreview) : null,
+        imageUrls: imageUrls ? (Array.isArray(imageUrls) ? imageUrls.join(',') : imageUrls) : null,
+        linkUrl: linkPreview?.url || null,
+        linkTitle: linkPreview?.title || null,
+        linkDescription: linkPreview?.description || linkPreview?.desc || null,
+        linkImage: linkPreview?.image || null,
       },
     });
 
     return NextResponse.json({ success: true, post });
   } catch (error) {
-    console.error('Upload API Error:', error);
-    return NextResponse.json({ error: error.message || 'Upload failed' }, { status: 500 });
+    console.error('Upload Post API Error:', error);
+    return NextResponse.json({ error: error.message || 'Post creation failed' }, { status: 500 });
   }
 }

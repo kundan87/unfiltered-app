@@ -5,6 +5,35 @@ import { useUser } from '@clerk/nextjs';
 
 const BG_COLORS = ['#dc2626', '#2563eb', '#16a34a', '#9333ea', '#000000'];
 
+// Helper function to compress images before uploading
+const compressImage = (file, maxWidth = 800, quality = 0.5) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+    };
+  });
+};
+
 export default function StoriesBar() {
   const { user } = useUser();
   const [stories, setStories] = useState([]);
@@ -73,43 +102,26 @@ export default function StoriesBar() {
     return canvas.toDataURL('image/jpeg', 0.6);
   };
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     const isVideo = file.type.startsWith('video/');
 
-    if (isVideo && file.size > 12 * 1024 * 1024) {
-      return alert('Video is too large! Please choose a video under 12MB.');
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (!isVideo) {
-        const img = new Image();
-        img.src = event.target.result;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const maxDim = 800;
-          let w = img.width;
-          let h = img.height;
-          if (w > h && w > maxDim) {
-            h = Math.round((h * maxDim) / w);
-            w = maxDim;
-          } else if (h > maxDim) {
-            w = Math.round((w * maxDim) / h);
-            h = maxDim;
-          }
-          canvas.width = w;
-          canvas.height = h;
-          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          setSelectedMedia({ url: canvas.toDataURL('image/jpeg', 0.6), type: 'IMAGE' });
-        };
-      } else {
-        setSelectedMedia({ url: event.target.result, type: 'VIDEO' });
+    if (isVideo) {
+      if (file.size > 10 * 1024 * 1024) {
+        return alert('Video is too large! Please choose a video under 10MB.');
       }
-    };
-    reader.readAsDataURL(file);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setSelectedMedia({ url: event.target.result, type: 'VIDEO' });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      // Compress Image aggressively for fast uploads
+      const compressedDataUrl = await compressImage(file, 800, 0.5);
+      setSelectedMedia({ url: compressedDataUrl, type: 'IMAGE' });
+    }
   };
 
   const handlePublishStory = async () => {
@@ -146,6 +158,7 @@ export default function StoriesBar() {
         setTextInput('');
         setSelectedMedia(null);
         await fetchStories();
+        alert('Story uploaded successfully! 🔥');
       } else {
         alert(data.error || 'Failed to post story');
       }

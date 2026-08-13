@@ -3,12 +3,11 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET() {
   try {
-    const dbPost = prisma.post || prisma.Post;
-    if (!dbPost) return NextResponse.json({ posts: [] });
-
-    const posts = await dbPost.findMany({
+    const posts = await prisma.video.findMany({
       include: {
         user: true,
+        comments: true,
+        votes: true,
       },
       orderBy: {
         createdAt: 'desc',

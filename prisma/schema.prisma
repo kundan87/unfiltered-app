@@ -9,23 +9,23 @@ datasource db {
 }
 
 model User {
-  id            String         @id
-  username      String         @unique // Unique username requirement
-  email         String         @unique
-  bio           String?        @default("Hot Take Creator 🔥")
-  isLive        Boolean        @default(false) // Live status
-  liveRoomId    String?        // Active Live Room/Stream ID
+  id          String   @id
+  username    String   @unique
+  email       String   @unique
+  bio         String?  @default("Hot Take Creator 🔥")
+  isLive      Boolean  @default(false)
+  liveRoomId  String?
 
-  videos        Video[]
-  comments      Comment[]
-  votes         Vote[]
-  stories       Story[]        // 24-Hour Expiring Stories
+  videos      Video[]
+  comments    Comment[]
+  votes       Vote[]
+  stories     Story[]
 
-  followers     Follows[]      @relation("following")
-  following     Follows[]      @relation("follower")
+  followers   Follows[] @relation("following")
+  following   Follows[] @relation("follower")
 
   notifications Notification[] @relation("UserNotifications")
-  createdAt     DateTime       @default(now())
+  createdAt   DateTime @default(now())
 }
 
 model Follows {
@@ -91,11 +91,11 @@ model Vote {
 
 model Notification {
   id        String   @id @default(cuid())
-  userId    String   // Recipient
+  userId    String   
   user      User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
-  actorName String   // Who performed the action
+  actorName String   
   type      String   // "VOTE_HOT", "VOTE_CAP", "COMMENT", "FOLLOW", "LIVE_START"
-  videoId   String?  // Optional (Live alerts & Follows ke liye videoId ki zarurat nahi hoti)
+  videoId   String?  
   video     Video?   @relation(fields: [videoId], references: [id], onDelete: Cascade)
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
