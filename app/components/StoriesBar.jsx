@@ -11,8 +11,7 @@ export default function StoriesBar() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [activeStoryGroup, setActiveStoryGroup] = useState(null);
 
-  // Story Creation State
-  const [storyType, setStoryType] = useState('TEXT'); // 'TEXT' | 'PHOTO' | 'VIDEO'
+  const [storyType, setStoryType] = useState('TEXT');
   const [textContent, setTextContent] = useState('');
   const [bgColor, setBgColor] = useState(BG_COLORS[0]);
   const [mediaUrl, setMediaUrl] = useState(null);
@@ -20,7 +19,6 @@ export default function StoriesBar() {
 
   const canvasRef = useRef(null);
 
-  // Fetch Stories
   const fetchStories = async () => {
     try {
       const res = await fetch('/api/stories');
@@ -37,23 +35,20 @@ export default function StoriesBar() {
     fetchStories();
   }, []);
 
-  // Canvas Drawing for Text Story (Generates compressed image)
+  // Text Canvas Drawer
   useEffect(() => {
     if (storyType === 'TEXT' && canvasRef.current) {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
 
-      // Background
       ctx.fillStyle = bgColor;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Text styling
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 26px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
-      // Text wrapping logic
       const words = (textContent || 'Type your story...').split(' ');
       let line = '';
       let lines = [];
@@ -79,35 +74,60 @@ export default function StoriesBar() {
     }
   }, [textContent, bgColor, storyType, isCreateOpen]);
 
-  // Handle Photo/Video Upload
-  const handleFileChange = (e) => {
+  // Client-Side Image Compression (Fixes Payload Too Large Issue)
+  const compressImage = (file) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 1080;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.6));
+      };
+    });
+  };
+
+  const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (file.size > 3 * 1024 * 1024) {
-      alert('File size too large! Please choose a file under 3MB.');
-      return;
+    if (storyType === 'PHOTO') {
+      const compressedBase64 = await compressImage(file);
+      setMediaUrl(compressedBase64);
+    } else {
+      const reader = new FileReader();
+      reader.onloadend = () => setMediaUrl(reader.result);
+      reader.readAsDataURL(file);
     }
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setMediaUrl(reader.result);
-    };
-    reader.readAsDataURL(file);
   };
 
-  // Submit Story to Backend
   const handlePublishStory = async () => {
     if (!user) return alert('Please Sign In to post a story!');
 
     setUploading(true);
     let finalMediaUrl = mediaUrl;
 
-    // Compress Text Canvas to JPEG quality 0.5 (under 100KB)
     if (storyType === 'TEXT') {
       if (!textContent.trim()) {
         setUploading(false);
-        return alert('Please type some text for the story!');
+        return alert('Please type some text!');
       }
       if (canvasRef.current) {
         finalMediaUrl = canvasRef.current.toDataURL('image/jpeg', 0.5);
@@ -116,7 +136,7 @@ export default function StoriesBar() {
 
     if (!finalMediaUrl) {
       setUploading(false);
-      return alert('Please select a photo/video or write text!');
+      return alert('Please select a media file or write text!');
     }
 
     try {
@@ -150,7 +170,6 @@ export default function StoriesBar() {
 
   return (
     <div className="flex items-center gap-4 overflow-x-auto py-4 px-2 no-scrollbar">
-      {/* Create Story Avatar Button */}
       <div className="flex flex-col items-center flex-shrink-0 cursor-pointer">
         <div
           onClick={() => setIsCreateOpen(true)}
@@ -172,7 +191,6 @@ export default function StoriesBar() {
         </span>
       </div>
 
-      {/* Active Stories List */}
       {stories.map((story) => (
         <div
           key={story.id}
@@ -194,11 +212,9 @@ export default function StoriesBar() {
         </div>
       ))}
 
-      {/* CREATE STORY MODAL */}
       {isCreateOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-gray-900 border border-gray-800 rounded-3xl max-w-sm w-full p-5 relative shadow-2xl">
-            {/* Close Modal */}
             <button
               onClick={() => setIsCreateOpen(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-white font-bold text-lg"
@@ -208,7 +224,6 @@ export default function StoriesBar() {
 
             <h3 className="text-white font-black text-center text-base mb-4">Add to Story 📸</h3>
 
-            {/* Selector Tabs */}
             <div className="flex justify-between bg-gray-950 p-1 rounded-2xl mb-4 border border-gray-800">
               <button
                 type="button"
@@ -248,7 +263,6 @@ export default function StoriesBar() {
               </button>
             </div>
 
-            {/* Story Preview Box */}
             <div className="relative w-full h-80 rounded-2xl overflow-hidden bg-black flex items-center justify-center mb-4 border border-gray-800">
               {storyType === 'TEXT' && (
                 <>
@@ -279,7 +293,6 @@ export default function StoriesBar() {
               )}
             </div>
 
-            {/* Inputs & Controls */}
             {storyType === 'TEXT' && (
               <>
                 <input
@@ -315,7 +328,6 @@ export default function StoriesBar() {
               />
             )}
 
-            {/* Post Button */}
             <button
               onClick={handlePublishStory}
               disabled={uploading}
@@ -327,7 +339,6 @@ export default function StoriesBar() {
         </div>
       )}
 
-      {/* VIEW STORY MODAL */}
       {activeStoryGroup && (
         <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
           <div className="relative max-w-sm w-full h-[80vh] bg-black rounded-3xl overflow-hidden border border-gray-800 flex items-center justify-center">

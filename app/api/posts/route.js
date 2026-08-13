@@ -15,8 +15,13 @@ export async function GET(req) {
       whereClause = {
         OR: [{ type: 'VIDEO' }, { videoUrl: { not: null } }],
       };
-    } else if (category && category !== 'All') {
-      whereClause = { category: category };
+    } else if (category && category !== 'All' && category !== 'all') {
+      whereClause = {
+        category: {
+          equals: category,
+          mode: 'insensitive',
+        },
+      };
     }
 
     const posts = await prisma.video.findMany({

@@ -6,37 +6,35 @@ export const dynamic = 'force-dynamic';
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { clerkUserId, caption, category, type, linkPreview, videoUrl, imageUrls } = body;
+    const userId = body.clerkUserId || body.userId;
 
-    if (!clerkUserId) {
+    if (!userId) {
       return NextResponse.json({ error: 'User ID missing' }, { status: 400 });
     }
 
-    // 1. Auto-Sync User in Database if not exists
-    let user = await prisma.user.findUnique({ where: { id: clerkUserId } });
+    let user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       user = await prisma.user.create({
         data: {
-          id: clerkUserId,
-          username: `user_${clerkUserId.slice(-6)}`,
-          email: `${clerkUserId}@unfiltered.app`,
+          id: userId,
+          username: `user_${userId.slice(-6)}`,
+          email: `${userId}@unfiltered.app`,
         },
       });
     }
 
-    // 2. Create Post Record
     const newPost = await prisma.video.create({
       data: {
         userId: user.id,
-        caption: caption || '',
-        category: category || 'General',
-        type: type || (videoUrl ? 'VIDEO' : linkPreview ? 'LINK' : 'TEXT'),
-        videoUrl: videoUrl || null,
-        imageUrls: imageUrls || null,
-        linkUrl: linkPreview?.url || null,
-        linkTitle: linkPreview?.title || null,
-        linkDescription: linkPreview?.description || null,
-        linkImage: linkPreview?.image || null,
+        caption: body.caption || body.content || '',
+        category: body.category || 'General',
+        type: body.type || (body.videoUrl ? 'VIDEO' : body.linkPreview ? 'LINK' : 'TEXT'),
+        videoUrl: body.videoUrl || null,
+        imageUrls: body.imageUrls || body.image || null,
+        linkUrl: body.linkPreview?.url || body.linkUrl || null,
+        linkTitle: body.linkPreview?.title || body.linkTitle || null,
+        linkDescription: body.linkPreview?.description || body.linkDescription || null,
+        linkImage: body.linkPreview?.image || body.linkImage || null,
       },
     });
 
