@@ -1,44 +1,48 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { type, category, caption, videoUrl, imageUrls, linkPreview, clerkUserId } = body;
+    const { clerkUserId, caption, category, type, linkPreview, videoUrl, imageUrls } = body;
 
-    if (!clerkUserId || clerkUserId === 'guest') {
-      return NextResponse.json({ error: 'Please sign in first' }, { status: 401 });
+    if (!clerkUserId) {
+      return NextResponse.json({ error: 'User ID missing' }, { status: 400 });
     }
 
-    // Auto Sync User in DB
-    const user = await prisma.user.upsert({
-      where: { id: clerkUserId },
-      update: {},
-      create: {
-        id: clerkUserId,
-        username: `user_${clerkUserId.slice(-6)}`,
-        email: `${clerkUserId}@unfiltered.app`,
-      },
-    });
+    // 1. Auto-Sync User in Database if not exists
+    let user = await prisma.user.findUnique({ where: { id: clerkUserId } });
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          id: clerkUserId,
+          username: `user_${clerkUserId.slice(-6)}`,
+          email: `${clerkUserId}@unfiltered.app`,
+        },
+      });
+    }
 
-    const post = await prisma.video.create({
+    // 2. Create Post Record
+    const newPost = await prisma.video.create({
       data: {
         userId: user.id,
         caption: caption || '',
         category: category || 'General',
-        type: type || 'TEXT',
+        type: type || (videoUrl ? 'VIDEO' : linkPreview ? 'LINK' : 'TEXT'),
         videoUrl: videoUrl || null,
-        imageUrls: imageUrls ? (Array.isArray(imageUrls) ? imageUrls.join(',') : imageUrls) : null,
+        imageUrls: imageUrls || null,
         linkUrl: linkPreview?.url || null,
         linkTitle: linkPreview?.title || null,
-        linkDescription: linkPreview?.description || linkPreview?.desc || null,
+        linkDescription: linkPreview?.description || null,
         linkImage: linkPreview?.image || null,
       },
     });
 
-    return NextResponse.json({ success: true, post });
+    return NextResponse.json({ success: true, post: newPost });
   } catch (error) {
-    console.error('Upload Post API Error:', error);
-    return NextResponse.json({ error: error.message || 'Post creation failed' }, { status: 500 });
+    console.error('Upload Error:', error);
+    return NextResponse.json({ error: error.message || 'Failed to save post' }, { status: 500 });
   }
 }

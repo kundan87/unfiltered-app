@@ -5,56 +5,31 @@ import { useUser } from '@clerk/nextjs';
 
 const BG_COLORS = ['#dc2626', '#2563eb', '#16a34a', '#9333ea', '#000000'];
 
-// Helper function to compress images before uploading
-const compressImage = (file, maxWidth = 800, quality = 0.5) => {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target.result;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-    };
-  });
-};
-
 export default function StoriesBar() {
   const { user } = useUser();
   const [stories, setStories] = useState([]);
-  const [activeStory, setActiveStory] = useState(null);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [activeStoryGroup, setActiveStoryGroup] = useState(null);
+
+  // Story Creation State
+  const [storyType, setStoryType] = useState('TEXT'); // 'TEXT' | 'PHOTO' | 'VIDEO'
+  const [textContent, setTextContent] = useState('');
+  const [bgColor, setBgColor] = useState(BG_COLORS[0]);
+  const [mediaUrl, setMediaUrl] = useState(null);
   const [uploading, setUploading] = useState(false);
 
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [storyType, setStoryType] = useState('TEXT');
-  const [textInput, setTextInput] = useState('');
-  const [selectedBgColor, setSelectedBgColor] = useState(BG_COLORS[0]);
-  const [selectedMedia, setSelectedMedia] = useState(null);
+  const canvasRef = useRef(null);
 
-  const fileInputRef = useRef(null);
-
+  // Fetch Stories
   const fetchStories = async () => {
     try {
       const res = await fetch('/api/stories');
       const data = await res.json();
-      setStories(data.stories || []);
+      if (res.ok && data.stories) {
+        setStories(data.stories);
+      }
     } catch (err) {
-      console.error('Error fetching stories:', err);
+      console.error('Failed to fetch stories:', err);
     }
   };
 
@@ -62,85 +37,88 @@ export default function StoriesBar() {
     fetchStories();
   }, []);
 
-  const generateTextImage = () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 600;
-    canvas.height = 1000;
-    const ctx = canvas.getContext('2d');
+  // Canvas Drawing for Text Story (Generates compressed image)
+  useEffect(() => {
+    if (storyType === 'TEXT' && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
 
-    ctx.fillStyle = selectedBgColor;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Background
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 42px sans-serif';
-    ctx.textAlign = 'center';
+      // Text styling
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 26px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
 
-    const words = textInput.split(' ');
-    let line = '';
-    const lines = [];
-    const maxWidth = 500;
+      // Text wrapping logic
+      const words = (textContent || 'Type your story...').split(' ');
+      let line = '';
+      let lines = [];
+      const maxWidth = canvas.width - 60;
+      const lineHeight = 36;
 
-    for (let n = 0; n < words.length; n++) {
-      const testLine = line + words[n] + ' ';
-      const metrics = ctx.measureText(testLine);
-      if (metrics.width > maxWidth && n > 0) {
-        lines.push(line);
-        line = words[n] + ' ';
-      } else {
-        line = testLine;
+      for (let n = 0; n < words.length; n++) {
+        let testLine = line + words[n] + ' ';
+        let metrics = ctx.measureText(testLine);
+        if (metrics.width > maxWidth && n > 0) {
+          lines.push(line);
+          line = words[n] + ' ';
+        } else {
+          line = testLine;
+        }
       }
+      lines.push(line);
+
+      const startY = canvas.height / 2 - ((lines.length - 1) * lineHeight) / 2;
+      lines.forEach((l, idx) => {
+        ctx.fillText(l.trim(), canvas.width / 2, startY + idx * lineHeight);
+      });
     }
-    lines.push(line);
+  }, [textContent, bgColor, storyType, isCreateOpen]);
 
-    const lineHeight = 55;
-    const startY = (canvas.height - lines.length * lineHeight) / 2;
-
-    lines.forEach((l, index) => {
-      ctx.fillText(l.trim(), canvas.width / 2, startY + index * lineHeight);
-    });
-
-    return canvas.toDataURL('image/jpeg', 0.6);
-  };
-
-  const handleFileSelect = async (e) => {
+  // Handle Photo/Video Upload
+  const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    const isVideo = file.type.startsWith('video/');
-
-    if (isVideo) {
-      if (file.size > 10 * 1024 * 1024) {
-        return alert('Video is too large! Please choose a video under 10MB.');
-      }
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setSelectedMedia({ url: event.target.result, type: 'VIDEO' });
-      };
-      reader.readAsDataURL(file);
-    } else {
-      // Compress Image aggressively for fast uploads
-      const compressedDataUrl = await compressImage(file, 800, 0.5);
-      setSelectedMedia({ url: compressedDataUrl, type: 'IMAGE' });
+    if (file.size > 3 * 1024 * 1024) {
+      alert('File size too large! Please choose a file under 3MB.');
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setMediaUrl(reader.result);
+    };
+    reader.readAsDataURL(file);
   };
 
+  // Submit Story to Backend
   const handlePublishStory = async () => {
-    if (!user) return alert('Please Sign In first!');
-
-    let finalMediaUrl = '';
-    let finalType = storyType;
-
-    if (storyType === 'TEXT') {
-      if (!textInput.trim()) return alert('Type something for your story!');
-      finalMediaUrl = generateTextImage();
-      finalType = 'IMAGE';
-    } else {
-      if (!selectedMedia) return alert('Please select photo or video!');
-      finalMediaUrl = selectedMedia.url;
-      finalType = selectedMedia.type;
-    }
+    if (!user) return alert('Please Sign In to post a story!');
 
     setUploading(true);
+    let finalMediaUrl = mediaUrl;
+
+    // Compress Text Canvas to JPEG quality 0.5 (under 100KB)
+    if (storyType === 'TEXT') {
+      if (!textContent.trim()) {
+        setUploading(false);
+        return alert('Please type some text for the story!');
+      }
+      if (canvasRef.current) {
+        finalMediaUrl = canvasRef.current.toDataURL('image/jpeg', 0.5);
+      }
+    }
+
+    if (!finalMediaUrl) {
+      setUploading(false);
+      return alert('Please select a photo/video or write text!');
+    }
+
     try {
       const res = await fetch('/api/stories', {
         method: 'POST',
@@ -148,87 +126,97 @@ export default function StoriesBar() {
         body: JSON.stringify({
           userId: user.id,
           mediaUrl: finalMediaUrl,
-          mediaType: finalType,
+          mediaType: storyType === 'VIDEO' ? 'VIDEO' : 'IMAGE',
         }),
       });
 
       const data = await res.json();
+
       if (res.ok && data.success) {
-        setShowCreateModal(false);
-        setTextInput('');
-        setSelectedMedia(null);
-        await fetchStories();
-        alert('Story uploaded successfully! 🔥');
+        alert('Story Published Successfully! 🎉');
+        setIsCreateOpen(false);
+        setTextContent('');
+        setMediaUrl(null);
+        fetchStories();
       } else {
-        alert(data.error || 'Failed to post story');
+        alert(data.error || 'Failed to upload story');
       }
     } catch (err) {
-      alert('Error uploading story');
+      alert('Error uploading story payload!');
     } finally {
       setUploading(false);
     }
   };
 
   return (
-    <div className="w-full overflow-x-auto py-3 flex items-center gap-4 border-b border-gray-800 no-scrollbar">
-      {/* YOUR STORY BUTTON */}
-      <div
-        onClick={() => setShowCreateModal(true)}
-        className="flex flex-col items-center gap-1 cursor-pointer min-w-[65px]"
-      >
-        <div className="relative w-14 h-14 rounded-full p-[2px] border-2 border-dashed border-red-500 flex items-center justify-center bg-gray-900">
+    <div className="flex items-center gap-4 overflow-x-auto py-4 px-2 no-scrollbar">
+      {/* Create Story Avatar Button */}
+      <div className="flex flex-col items-center flex-shrink-0 cursor-pointer">
+        <div
+          onClick={() => setIsCreateOpen(true)}
+          className="relative w-16 h-16 rounded-full border-2 border-dashed border-red-600 flex items-center justify-center bg-gray-900 hover:scale-105 transition"
+        >
           {user?.imageUrl ? (
-            <img src={user.imageUrl} alt="User" className="w-full h-full rounded-full object-cover" />
+            <img src={user.imageUrl} alt="User" className="w-14 h-14 rounded-full object-cover opacity-80" />
           ) : (
-            <div className="w-full h-full rounded-full bg-gray-800 flex items-center justify-center text-white font-bold text-lg">
-              👤
+            <div className="w-14 h-14 rounded-full bg-gray-800 flex items-center justify-center text-white font-bold">
+              +
             </div>
           )}
-          <span className="absolute bottom-0 right-0 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-black border-2 border-black">
+          <div className="absolute bottom-0 right-0 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold border border-black">
             +
-          </span>
+          </div>
         </div>
-        <span className="text-[11px] text-gray-300 font-medium">Your Story</span>
+        <span className="text-[11px] text-gray-300 font-medium mt-1 truncate w-16 text-center">
+          Your Story
+        </span>
       </div>
 
-      {/* ALL STORIES LIST */}
+      {/* Active Stories List */}
       {stories.map((story) => (
         <div
           key={story.id}
-          onClick={() => setActiveStory(story)}
-          className="flex flex-col items-center gap-1 cursor-pointer min-w-[65px]"
+          onClick={() => setActiveStoryGroup(story)}
+          className="flex flex-col items-center flex-shrink-0 cursor-pointer group"
         >
-          <div className="w-14 h-14 rounded-full p-[2px] bg-gradient-to-tr from-yellow-500 via-red-500 to-purple-600">
-            <img
-              src={story.user?.imageUrl || story.mediaUrl}
-              alt="Story"
-              className="w-full h-full rounded-full object-cover border-2 border-black"
-            />
+          <div className="w-16 h-16 rounded-full p-[2px] bg-gradient-to-tr from-yellow-500 via-red-600 to-purple-600 group-hover:scale-105 transition">
+            <div className="w-full h-full rounded-full bg-black p-[2px] overflow-hidden">
+              <img
+                src={story.user?.imageUrl || story.mediaUrl}
+                alt="Story"
+                className="w-full h-full rounded-full object-cover"
+              />
+            </div>
           </div>
-          <span className="text-[11px] text-gray-300 truncate w-14 text-center">
+          <span className="text-[11px] text-gray-300 font-medium mt-1 truncate w-16 text-center">
             {story.user?.username || 'User'}
           </span>
         </div>
       ))}
 
       {/* CREATE STORY MODAL */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
-          <div className="bg-gray-900 border border-gray-800 w-full max-w-sm rounded-3xl p-5 shadow-2xl relative">
+      {isCreateOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-3xl max-w-sm w-full p-5 relative shadow-2xl">
+            {/* Close Modal */}
             <button
-              onClick={() => setShowCreateModal(false)}
-              className="absolute top-4 right-4 bg-gray-800 text-white rounded-full w-7 h-7 flex items-center justify-center font-bold text-xs"
+              onClick={() => setIsCreateOpen(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white font-bold text-lg"
             >
               ✕
             </button>
 
             <h3 className="text-white font-black text-center text-base mb-4">Add to Story 📸</h3>
 
-            <div className="flex bg-gray-800 p-1 rounded-full mb-4">
+            {/* Selector Tabs */}
+            <div className="flex justify-between bg-gray-950 p-1 rounded-2xl mb-4 border border-gray-800">
               <button
                 type="button"
-                onClick={() => setStoryType('TEXT')}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-full transition ${
+                onClick={() => {
+                  setStoryType('TEXT');
+                  setMediaUrl(null);
+                }}
+                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition ${
                   storyType === 'TEXT' ? 'bg-red-600 text-white' : 'text-gray-400'
                 }`}
               >
@@ -236,8 +224,11 @@ export default function StoriesBar() {
               </button>
               <button
                 type="button"
-                onClick={() => setStoryType('PHOTO')}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-full transition ${
+                onClick={() => {
+                  setStoryType('PHOTO');
+                  setMediaUrl(null);
+                }}
+                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition ${
                   storyType === 'PHOTO' ? 'bg-red-600 text-white' : 'text-gray-400'
                 }`}
               >
@@ -245,108 +236,112 @@ export default function StoriesBar() {
               </button>
               <button
                 type="button"
-                onClick={() => setStoryType('VIDEO')}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-full transition ${
+                onClick={() => {
+                  setStoryType('VIDEO');
+                  setMediaUrl(null);
+                }}
+                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition ${
                   storyType === 'VIDEO' ? 'bg-red-600 text-white' : 'text-gray-400'
                 }`}
               >
-                🎥 Video
+                📹 Video
               </button>
             </div>
 
+            {/* Story Preview Box */}
+            <div className="relative w-full h-80 rounded-2xl overflow-hidden bg-black flex items-center justify-center mb-4 border border-gray-800">
+              {storyType === 'TEXT' && (
+                <>
+                  <canvas ref={canvasRef} width={360} height={480} className="hidden" />
+                  <div
+                    style={{ backgroundColor: bgColor }}
+                    className="w-full h-full flex items-center justify-center p-6 text-center text-white font-bold text-xl break-words"
+                  >
+                    {textContent || 'Type your story below...'}
+                  </div>
+                </>
+              )}
+
+              {storyType === 'PHOTO' && (
+                mediaUrl ? (
+                  <img src={mediaUrl} alt="Preview" className="w-full h-full object-cover" />
+                ) : (
+                  <p className="text-xs text-gray-500">Choose a photo file below</p>
+                )
+              )}
+
+              {storyType === 'VIDEO' && (
+                mediaUrl ? (
+                  <video src={mediaUrl} controls className="w-full h-full object-cover" />
+                ) : (
+                  <p className="text-xs text-gray-500">Choose a video file below</p>
+                )
+              )}
+            </div>
+
+            {/* Inputs & Controls */}
             {storyType === 'TEXT' && (
-              <div className="space-y-3">
-                <div
-                  className="w-full h-56 rounded-2xl p-4 flex items-center justify-center"
-                  style={{ backgroundColor: selectedBgColor }}
-                >
-                  <textarea
-                    value={textInput}
-                    onChange={(e) => setTextInput(e.target.value)}
-                    placeholder="Type your story status..."
-                    className="w-full bg-transparent text-white text-center font-bold text-lg focus:outline-none resize-none placeholder:text-white/60"
-                  />
-                </div>
-                <div className="flex justify-center gap-2">
-                  {BG_COLORS.map((color) => (
+              <>
+                <input
+                  type="text"
+                  value={textContent}
+                  onChange={(e) => setTextContent(e.target.value)}
+                  placeholder="Write status text..."
+                  maxLength={100}
+                  className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-white text-xs mb-3 focus:outline-none focus:border-red-600"
+                />
+                <div className="flex justify-center gap-3 mb-4">
+                  {BG_COLORS.map((c) => (
                     <button
-                      key={color}
+                      key={c}
                       type="button"
-                      onClick={() => setSelectedBgColor(color)}
+                      onClick={() => setBgColor(c)}
+                      style={{ backgroundColor: c }}
                       className={`w-7 h-7 rounded-full border-2 ${
-                        selectedBgColor === color ? 'border-white scale-110' : 'border-transparent'
+                        bgColor === c ? 'border-white scale-110' : 'border-transparent'
                       }`}
-                      style={{ backgroundColor: color }}
                     />
                   ))}
                 </div>
-              </div>
+              </>
             )}
 
             {(storyType === 'PHOTO' || storyType === 'VIDEO') && (
-              <div className="space-y-3">
-                <div
-                  onClick={() => fileInputRef.current.click()}
-                  className="w-full h-56 rounded-2xl border-2 border-dashed border-gray-700 bg-gray-800 flex flex-col items-center justify-center cursor-pointer overflow-hidden"
-                >
-                  {selectedMedia ? (
-                    selectedMedia.type === 'IMAGE' ? (
-                      <img src={selectedMedia.url} alt="Selected" className="w-full h-full object-cover" />
-                    ) : (
-                      <video src={selectedMedia.url} controls className="w-full h-full object-cover" />
-                    )
-                  ) : (
-                    <div className="text-center p-4">
-                      <span className="text-3xl block mb-1">{storyType === 'PHOTO' ? '📷' : '📹'}</span>
-                      <span className="text-xs text-gray-400 font-bold">
-                        Click to select {storyType.toLowerCase()} from gallery
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept={storyType === 'PHOTO' ? 'image/*' : 'video/*'}
-                  className="hidden"
-                  onChange={handleFileSelect}
-                />
-              </div>
+              <input
+                type="file"
+                accept={storyType === 'PHOTO' ? 'image/*' : 'video/*'}
+                onChange={handleFileChange}
+                className="w-full text-xs text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-gray-800 file:text-white hover:file:bg-gray-700 mb-4 cursor-pointer"
+              />
             )}
 
+            {/* Post Button */}
             <button
               onClick={handlePublishStory}
               disabled={uploading}
-              className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-3 rounded-full text-sm mt-4 transition active:scale-95 disabled:bg-gray-700"
+              className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-3 rounded-full text-sm transition active:scale-95 disabled:bg-gray-800"
             >
-              {uploading ? 'Posting Story...' : '🔥 Post Status'}
+              {uploading ? 'Posting Story...' : '🚀 Share Story'}
             </button>
           </div>
         </div>
       )}
 
-      {/* STORY VIEWER */}
-      {activeStory && (
-        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4">
-          <button
-            onClick={() => setActiveStory(null)}
-            className="absolute top-4 right-4 text-white text-xl font-bold bg-gray-800 rounded-full w-8 h-8 flex items-center justify-center"
-          >
-            ✕
-          </button>
-          <div className="max-w-sm w-full bg-gray-900 rounded-2xl overflow-hidden border border-gray-800 shadow-2xl">
-            <div className="p-3 bg-gray-800/80 flex items-center gap-2">
-              <img
-                src={activeStory.user?.imageUrl || activeStory.mediaUrl}
-                alt="User"
-                className="w-8 h-8 rounded-full object-cover"
-              />
-              <span className="text-xs font-bold text-white">@{activeStory.user?.username || 'User'}</span>
-            </div>
-            {activeStory.mediaType === 'VIDEO' ? (
-              <video src={activeStory.mediaUrl} autoPlay controls className="w-full h-[450px] object-cover" />
+      {/* VIEW STORY MODAL */}
+      {activeStoryGroup && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
+          <div className="relative max-w-sm w-full h-[80vh] bg-black rounded-3xl overflow-hidden border border-gray-800 flex items-center justify-center">
+            <button
+              onClick={() => setActiveStoryGroup(null)}
+              className="absolute top-4 right-4 z-10 text-white font-bold bg-gray-900/80 w-8 h-8 rounded-full flex items-center justify-center"
+            >
+              ✕
+            </button>
+
+            {activeStoryGroup.mediaType === 'VIDEO' ? (
+              <video src={activeStoryGroup.mediaUrl} autoPlay controls className="w-full h-full object-cover" />
             ) : (
-              <img src={activeStory.mediaUrl} alt="Story View" className="w-full h-[450px] object-cover" />
+              <img src={activeStoryGroup.mediaUrl} alt="Story" className="w-full h-full object-cover" />
             )}
           </div>
         </div>

@@ -29,7 +29,7 @@ export async function GET(req) {
       },
     });
 
-    return NextResponse.json({ posts });
+    return NextResponse.json({ posts: posts || [] });
   } catch (error) {
     console.error('Fetch posts error:', error);
     return NextResponse.json({ posts: [] });

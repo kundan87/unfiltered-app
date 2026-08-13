@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const stories = await prisma.story.findMany({
@@ -25,20 +27,21 @@ export async function POST(req) {
     const body = await req.json();
     const { userId, mediaUrl, mediaType } = body;
 
-    if (!userId) {
-      return NextResponse.json({ error: 'User session required' }, { status: 401 });
+    if (!userId || !mediaUrl) {
+      return NextResponse.json({ error: 'User ID and Media required' }, { status: 400 });
     }
 
-    // Auto-create user record if missing in DB
-    const user = await prisma.user.upsert({
-      where: { id: userId },
-      update: {},
-      create: {
-        id: userId,
-        username: `user_${userId.slice(-6)}`,
-        email: `${userId}@unfiltered.app`,
-      },
-    });
+    // Ensure User exists in Neon DB
+    let user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          id: userId,
+          username: `user_${userId.slice(-6)}`,
+          email: `${userId}@unfiltered.app`,
+        },
+      });
+    }
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
@@ -53,7 +56,7 @@ export async function POST(req) {
 
     return NextResponse.json({ success: true, story });
   } catch (error) {
-    console.error('Story upload error:', error);
-    return NextResponse.json({ error: 'Failed to upload story' }, { status: 500 });
+    console.error('Story Upload DB Error:', error);
+    return NextResponse.json({ error: 'Database rejected story payload' }, { status: 500 });
   }
 }
