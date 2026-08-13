@@ -1,74 +1,42 @@
-export const dynamic = 'force-dynamic';
-export const fetchCache = 'force-no-store';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { currentUser } from '@clerk/nextjs/server';
 
-export async function GET(request) {
+export async function POST(req) {
   try {
-    const { searchParams } = new URL(request.url);
-    const category = searchParams.get('category');
-    const sort = searchParams.get('sort'); // 'hot' for leaderboard
+    const body = await req.json();
+    const { type, category, caption, videoUrl, imageUrls, linkPreview, clerkUserId } = body;
 
-    let whereClause = {};
-    if (category && category !== 'All') {
-      whereClause.category = category;
+    if (!clerkUserId || clerkUserId === 'guest') {
+      return NextResponse.json({ error: 'Please sign in first' }, { status: 401 });
     }
 
-    let orderBy = { createdAt: 'desc' };
-    if (sort === 'hot') {
-      orderBy = { agreeCount: 'desc' };
-    }
-
-    const videos = await prisma.video.findMany({
-      where: whereClause,
-      include: { user: true },
-      orderBy: orderBy,
-    });
-
-    return NextResponse.json({ videos });
-  } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
-}
-
-export async function POST(request) {
-  try {
-    const user = await currentUser();
+    // Auto sync user to Prisma DB if missing
+    let user = await prisma.user.findUnique({ where: { id: clerkUserId } });
     if (!user) {
-      return NextResponse.json({ error: 'Please sign in to publish!' }, { status: 401 });
+      user = await prisma.user.create({
+        data: {
+          id: clerkUserId,
+          username: `user_${clerkUserId.slice(-6)}`,
+          email: `${clerkUserId}@unfiltered.app`,
+        },
+      });
     }
 
-    const { type, videoUrl, imageUrls, caption, linkPreview, category } = await request.json();
-
-    const dbUser = await prisma.user.upsert({
-      where: { id: user.id },
-      update: { username: user.username || user.firstName || 'user' },
-      create: {
-        id: user.id,
-        username: user.username || user.firstName || 'user',
-        email: user.emailAddresses[0]?.emailAddress || `${user.id}@unfiltered.app`,
-      },
-    });
-
-    const newPost = await prisma.video.create({
+    const post = await prisma.post.create({
       data: {
-        type: type || 'TEXT',
-        category: category || 'General',
-        videoUrl: videoUrl || null,
-        imageUrls: imageUrls || null,
-        linkUrl: linkPreview?.url || null,
-        linkTitle: linkPreview?.title || null,
-        linkDescription: linkPreview?.description || null,
-        linkImage: linkPreview?.image || null,
+        userId: user.id,
         caption: caption || '',
-        userId: dbUser.id,
+        category: category || 'General',
+        type: type || 'TEXT',
+        videoUrl: videoUrl || null,
+        imageUrls: imageUrls ? (Array.isArray(imageUrls) ? imageUrls : [imageUrls]) : [],
+        linkPreview: linkPreview ? JSON.stringify(linkPreview) : null,
       },
-      include: { user: true },
     });
 
-    return NextResponse.json({ success: true, video: newPost });
-  } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ success: true, post });
+  } catch (error) {
+    console.error('Upload API Error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

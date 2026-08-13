@@ -27,7 +27,39 @@ export default function CreatePost({ onPostSuccess }) {
   const timerIntervalRef = useRef(null);
   const galleryInputRef = useRef(null);
 
-  // Open Live Camera (Video + Audio)
+  // Auto-detect Link in Textarea & Fetch Preview
+  useEffect(() => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const foundUrls = caption.match(urlRegex);
+
+    if (foundUrls && foundUrls.length > 0) {
+      const urlToFetch = foundUrls[0];
+      if (!linkPreview || linkPreview.url !== urlToFetch) {
+        fetchLinkPreview(urlToFetch);
+      }
+    }
+  }, [caption]);
+
+  const fetchLinkPreview = async (targetUrl) => {
+    setLoadingLink(true);
+    try {
+      const res = await fetch('/api/link-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: targetUrl }),
+      });
+      const data = await res.json();
+      if (res.ok && data.title) {
+        setLinkPreview(data);
+      }
+    } catch (err) {
+      console.error('Link preview failed', err);
+    } finally {
+      setLoadingLink(false);
+    }
+  };
+
+  // Live Camera Start
   const startCamera = async () => {
     setShowCamera(true);
     setCameraMode('PHOTO');
@@ -36,7 +68,7 @@ export default function CreatePost({ onPostSuccess }) {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
+        video: { facingMode: 'user', width: 640, height: 480 },
         audio: true,
       });
       streamRef.current = stream;
@@ -44,10 +76,9 @@ export default function CreatePost({ onPostSuccess }) {
         videoRef.current.srcObject = stream;
       }
     } catch (err) {
-      // Fallback without audio if mic fails
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user' },
+          video: { facingMode: 'user', width: 640, height: 480 },
           audio: false,
         });
         streamRef.current = stream;
@@ -55,7 +86,7 @@ export default function CreatePost({ onPostSuccess }) {
           videoRef.current.srcObject = stream;
         }
       } catch (e) {
-        alert('Camera or Microphone access denied');
+        alert('Camera access denied');
         setShowCamera(false);
       }
     }
@@ -74,36 +105,35 @@ export default function CreatePost({ onPostSuccess }) {
     setRecordTime(0);
   };
 
-  // Capture Photo
+  // Photo Capture & Canvas Compression
   const capturePhoto = () => {
     const video = videoRef.current;
     if (!video) return;
 
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-
+    canvas.width = 640;
+    canvas.height = 480;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const base64Image = canvas.toDataURL('image/jpeg', 0.8);
-    setMedia({ url: base64Image, type: 'IMAGE' });
+    const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+    setMedia({ url: compressedBase64, type: 'IMAGE' });
     stopCamera();
   };
 
-  // Start Video Recording
+  // Compressed Video Recording (Max 15 seconds)
   const startRecording = () => {
     recordedChunksRef.current = [];
     const stream = streamRef.current;
     if (!stream) return;
 
-    let options = { mimeType: 'video/webm' };
-    if (!MediaRecorder.isTypeSupported('video/webm')) {
-      options = { mimeType: 'video/mp4' };
-    }
+    const options = { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 400000 };
 
     try {
-      const mediaRecorder = new MediaRecorder(stream, options);
+      const mediaRecorder = new MediaRecorder(
+        stream,
+        MediaRecorder.isTypeSupported(options.mimeType) ? options : {}
+      );
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -113,9 +143,7 @@ export default function CreatePost({ onPostSuccess }) {
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, {
-          type: mediaRecorder.mimeType || 'video/webm',
-        });
+        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
         const reader = new FileReader();
         reader.onloadend = () => {
           setMedia({ url: reader.result, type: 'VIDEO' });
@@ -129,14 +157,19 @@ export default function CreatePost({ onPostSuccess }) {
 
       setRecordTime(0);
       timerIntervalRef.current = setInterval(() => {
-        setRecordTime((prev) => prev + 1);
+        setRecordTime((prev) => {
+          if (prev >= 14) {
+            stopRecording();
+            return 15;
+          }
+          return prev + 1;
+        });
       }, 1000);
     } catch (err) {
-      alert('Video recording error on this browser.');
+      alert('Video recording error');
     }
   };
 
-  // Stop Video Recording
   const stopRecording = () => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -145,25 +178,43 @@ export default function CreatePost({ onPostSuccess }) {
     setIsRecording(false);
   };
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
   const handleGalleryChange = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const isVideo = file.type.startsWith('video/');
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setMedia({
-          url: reader.result,
-          type: isVideo ? 'VIDEO' : 'IMAGE',
-        });
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    const isVideo = file.type.startsWith('video/');
+
+    if (isVideo && file.size > 8 * 1024 * 1024) {
+      return alert('Video file is too large! Please choose a video under 8MB.');
     }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (!isVideo) {
+        const img = new Image();
+        img.src = reader.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxDim = 800;
+          let w = img.width;
+          let h = img.height;
+          if (w > h && w > maxDim) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else if (h > maxDim) {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          setMedia({ url: canvas.toDataURL('image/jpeg', 0.6), type: 'IMAGE' });
+        };
+      } else {
+        setMedia({ url: reader.result, type: 'VIDEO' });
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handlePublish = async () => {
@@ -187,7 +238,7 @@ export default function CreatePost({ onPostSuccess }) {
       });
 
       const data = await res.json();
-      if (data.success) {
+      if (res.ok && data.success) {
         setCaption('');
         setMedia(null);
         setLinkPreview(null);
@@ -208,7 +259,7 @@ export default function CreatePost({ onPostSuccess }) {
       <h2 className="text-white font-black text-center text-lg mb-4 select-none">Create Unfiltered Take 💣</h2>
 
       <div className="space-y-4">
-        {/* Category Pills */}
+        {/* Category Selector */}
         <div className="flex gap-1 overflow-x-auto no-scrollbar pb-1">
           {CATEGORIES.map((cat) => (
             <button
@@ -224,15 +275,41 @@ export default function CreatePost({ onPostSuccess }) {
           ))}
         </div>
 
-        {/* Text Area */}
+        {/* Caption Textarea */}
         <textarea
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
-          placeholder="Share your hot take or thought..."
+          placeholder="Share your hot take or paste website link..."
           className="w-full h-28 bg-gray-800 text-white text-sm p-4 rounded-2xl border border-gray-700 focus:outline-none focus:border-red-500 resize-none"
         />
 
-        {/* Selected Media Preview */}
+        {/* Link Snippet Preview */}
+        {loadingLink && (
+          <div className="p-3 bg-gray-800 rounded-2xl text-xs text-gray-400 font-bold animate-pulse">
+            Fetching link snippet preview... 🔗
+          </div>
+        )}
+
+        {linkPreview && (
+          <div className="relative border border-gray-700 bg-gray-800/80 rounded-2xl p-3 flex gap-3 items-center">
+            <button
+              onClick={() => setLinkPreview(null)}
+              className="absolute top-2 right-2 bg-black/80 text-white rounded-full text-xs w-5 h-5 flex items-center justify-center font-bold"
+            >
+              ✕
+            </button>
+            {linkPreview.image && (
+              <img src={linkPreview.image} alt="Preview" className="w-16 h-16 object-cover rounded-xl" />
+            )}
+            <div className="flex-1 pr-4 overflow-hidden">
+              <p className="text-xs font-bold text-white truncate">{linkPreview.title}</p>
+              <p className="text-[10px] text-gray-400 line-clamp-2">{linkPreview.description}</p>
+              <p className="text-[9px] text-red-400 truncate mt-1">{linkPreview.url}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Media Preview (Photo / Video) */}
         {media && (
           <div className="relative rounded-2xl overflow-hidden border border-gray-700 bg-black max-h-48 flex items-center justify-center">
             <button
@@ -249,7 +326,7 @@ export default function CreatePost({ onPostSuccess }) {
           </div>
         )}
 
-        {/* Camera / Gallery Selectors */}
+        {/* Action Buttons */}
         <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
@@ -281,18 +358,16 @@ export default function CreatePost({ onPostSuccess }) {
         <button
           onClick={handlePublish}
           disabled={isUploading}
-          className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-3.5 rounded-full text-sm transition"
+          className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-3.5 rounded-full text-sm transition active:scale-95 disabled:bg-gray-700"
         >
-          {isUploading ? 'Publishing...' : '🔥 Post Take'}
+          {isUploading ? 'Publishing Take...' : '🔥 Post Take'}
         </button>
       </div>
 
-      {/* LIVE CAMERA & VIDEO RECORDING MODAL */}
+      {/* Live Camera Modal */}
       {showCamera && (
         <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4">
           <div className="relative w-full max-w-sm bg-gray-900 rounded-3xl overflow-hidden border border-gray-800 shadow-2xl">
-            
-            {/* Mode Switcher Tabs */}
             {!isRecording && (
               <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex bg-black/60 backdrop-blur-md rounded-full p-1 border border-white/10">
                 <button
@@ -311,34 +386,30 @@ export default function CreatePost({ onPostSuccess }) {
                     cameraMode === 'VIDEO' ? 'bg-red-600 text-white' : 'text-gray-400'
                   }`}
                 >
-                  📹 Video
+                  📹 Video (15s)
                 </button>
               </div>
             )}
 
-            {/* Live Recording Badge */}
             {isRecording && (
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-red-600/90 text-white text-xs font-black px-3 py-1 rounded-full animate-pulse">
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-red-600 text-white text-xs font-black px-3 py-1 rounded-full animate-pulse">
                 <span className="w-2 h-2 rounded-full bg-white"></span>
-                <span>REC {formatTime(recordTime)}</span>
+                <span>REC 00:{recordTime.toString().padStart(2, '0')} / 15s</span>
               </div>
             )}
 
-            {/* Video Viewport */}
             <video ref={videoRef} autoPlay playsInline muted={isRecording} className="w-full h-80 object-cover bg-black" />
 
-            {/* Bottom Actions */}
             <div className="p-4 flex justify-between items-center bg-gray-900 border-t border-gray-800">
               <button
                 type="button"
                 onClick={stopCamera}
                 disabled={isRecording}
-                className="text-xs text-gray-400 font-bold px-4 py-2 rounded-full bg-gray-800 disabled:opacity-50"
+                className="text-xs text-gray-400 font-bold px-4 py-2 rounded-full bg-gray-800"
               >
                 Cancel
               </button>
 
-              {/* Action Button based on Mode */}
               {cameraMode === 'PHOTO' ? (
                 <button
                   type="button"
@@ -365,7 +436,6 @@ export default function CreatePost({ onPostSuccess }) {
                 </button>
               )}
             </div>
-
           </div>
         </div>
       )}

@@ -3,13 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useUser } from '@clerk/nextjs';
 
-const BG_COLORS = [
-  '#dc2626', // Red
-  '#2563eb', // Blue
-  '#16a34a', // Green
-  '#9333ea', // Purple
-  '#000000', // Black
-];
+const BG_COLORS = ['#dc2626', '#2563eb', '#16a34a', '#9333ea', '#000000'];
 
 export default function StoriesBar() {
   const { user } = useUser();
@@ -17,12 +11,11 @@ export default function StoriesBar() {
   const [activeStory, setActiveStory] = useState(null);
   const [uploading, setUploading] = useState(false);
 
-  // Modal & Mode States
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [storyType, setStoryType] = useState('TEXT'); // 'TEXT' | 'PHOTO' | 'VIDEO'
+  const [storyType, setStoryType] = useState('TEXT');
   const [textInput, setTextInput] = useState('');
   const [selectedBgColor, setSelectedBgColor] = useState(BG_COLORS[0]);
-  const [selectedMedia, setSelectedMedia] = useState(null); // { url, type }
+  const [selectedMedia, setSelectedMedia] = useState(null);
 
   const fileInputRef = useRef(null);
 
@@ -40,28 +33,23 @@ export default function StoriesBar() {
     fetchStories();
   }, []);
 
-  // Generate Image from Text Input
   const generateTextImage = () => {
     const canvas = document.createElement('canvas');
-    canvas.width = 720;
-    canvas.height = 1280;
+    canvas.width = 600;
+    canvas.height = 1000;
     const ctx = canvas.getContext('2d');
 
-    // Fill Background
     ctx.fillStyle = selectedBgColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Text Settings
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 48px sans-serif';
+    ctx.font = 'bold 42px sans-serif';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
 
-    // Wrap Text
     const words = textInput.split(' ');
     let line = '';
     const lines = [];
-    const maxWidth = 600;
+    const maxWidth = 500;
 
     for (let n = 0; n < words.length; n++) {
       const testLine = line + words[n] + ' ';
@@ -75,32 +63,34 @@ export default function StoriesBar() {
     }
     lines.push(line);
 
-    const lineHeight = 60;
+    const lineHeight = 55;
     const startY = (canvas.height - lines.length * lineHeight) / 2;
 
     lines.forEach((l, index) => {
       ctx.fillText(l.trim(), canvas.width / 2, startY + index * lineHeight);
     });
 
-    return canvas.toDataURL('image/jpeg', 0.8);
+    return canvas.toDataURL('image/jpeg', 0.6);
   };
 
-  // Handle Media Select (Photo / Video)
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     const isVideo = file.type.startsWith('video/');
-    const reader = new FileReader();
 
+    if (isVideo && file.size > 8 * 1024 * 1024) {
+      return alert('Video is too large! Please choose a video under 8MB.');
+    }
+
+    const reader = new FileReader();
     reader.onload = (event) => {
       if (!isVideo) {
-        // Compress Image
         const img = new Image();
         img.src = event.target.result;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const maxDim = 900;
+          const maxDim = 800;
           let w = img.width;
           let h = img.height;
           if (w > h && w > maxDim) {
@@ -113,7 +103,7 @@ export default function StoriesBar() {
           canvas.width = w;
           canvas.height = h;
           canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          setSelectedMedia({ url: canvas.toDataURL('image/jpeg', 0.7), type: 'IMAGE' });
+          setSelectedMedia({ url: canvas.toDataURL('image/jpeg', 0.6), type: 'IMAGE' });
         };
       } else {
         setSelectedMedia({ url: event.target.result, type: 'VIDEO' });
@@ -122,7 +112,6 @@ export default function StoriesBar() {
     reader.readAsDataURL(file);
   };
 
-  // Submit Story
   const handlePublishStory = async () => {
     if (!user) return alert('Please Sign In first!');
 
@@ -169,19 +158,14 @@ export default function StoriesBar() {
 
   return (
     <div className="w-full overflow-x-auto py-3 flex items-center gap-4 border-b border-gray-800 no-scrollbar">
-      
       {/* YOUR STORY BUTTON */}
       <div
         onClick={() => setShowCreateModal(true)}
-        className="flex flex-col items-center gap-1 cursor-pointer min-w-[65px] group"
+        className="flex flex-col items-center gap-1 cursor-pointer min-w-[65px]"
       >
-        <div className="relative w-14 h-14 rounded-full p-[2px] border-2 border-dashed border-red-500 flex items-center justify-center bg-gray-900 group-hover:border-red-400 transition">
+        <div className="relative w-14 h-14 rounded-full p-[2px] border-2 border-dashed border-red-500 flex items-center justify-center bg-gray-900">
           {user?.imageUrl ? (
-            <img
-              src={user.imageUrl}
-              alt="User"
-              className="w-full h-full rounded-full object-cover"
-            />
+            <img src={user.imageUrl} alt="User" className="w-full h-full rounded-full object-cover" />
           ) : (
             <div className="w-full h-full rounded-full bg-gray-800 flex items-center justify-center text-white font-bold text-lg">
               👤
@@ -194,14 +178,14 @@ export default function StoriesBar() {
         <span className="text-[11px] text-gray-300 font-medium">Your Story</span>
       </div>
 
-      {/* ALL FOLLOWERS/USERS STORIES LIST */}
+      {/* ALL STORIES LIST */}
       {stories.map((story) => (
         <div
           key={story.id}
           onClick={() => setActiveStory(story)}
           className="flex flex-col items-center gap-1 cursor-pointer min-w-[65px]"
         >
-          <div className="w-14 h-14 rounded-full p-[2px] bg-gradient-to-tr from-yellow-500 via-red-500 to-purple-600 shadow-md">
+          <div className="w-14 h-14 rounded-full p-[2px] bg-gradient-to-tr from-yellow-500 via-red-500 to-purple-600">
             <img
               src={story.user?.imageUrl || story.mediaUrl}
               alt="Story"
@@ -214,7 +198,7 @@ export default function StoriesBar() {
         </div>
       ))}
 
-      {/* CREATE STORY MODAL (TEXT, PHOTO, VIDEO) */}
+      {/* CREATE STORY MODAL */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
           <div className="bg-gray-900 border border-gray-800 w-full max-w-sm rounded-3xl p-5 shadow-2xl relative">
@@ -227,7 +211,6 @@ export default function StoriesBar() {
 
             <h3 className="text-white font-black text-center text-base mb-4">Add to Story 📸</h3>
 
-            {/* MODE TABS */}
             <div className="flex bg-gray-800 p-1 rounded-full mb-4">
               <button
                 type="button"
@@ -258,11 +241,10 @@ export default function StoriesBar() {
               </button>
             </div>
 
-            {/* TEXT MODE */}
             {storyType === 'TEXT' && (
               <div className="space-y-3">
                 <div
-                  className="w-full h-56 rounded-2xl p-4 flex items-center justify-center transition-all"
+                  className="w-full h-56 rounded-2xl p-4 flex items-center justify-center"
                   style={{ backgroundColor: selectedBgColor }}
                 >
                   <textarea
@@ -272,7 +254,6 @@ export default function StoriesBar() {
                     className="w-full bg-transparent text-white text-center font-bold text-lg focus:outline-none resize-none placeholder:text-white/60"
                   />
                 </div>
-                {/* BG COLOR SELECTOR */}
                 <div className="flex justify-center gap-2">
                   {BG_COLORS.map((color) => (
                     <button
@@ -289,12 +270,11 @@ export default function StoriesBar() {
               </div>
             )}
 
-            {/* PHOTO / VIDEO MODE */}
             {(storyType === 'PHOTO' || storyType === 'VIDEO') && (
               <div className="space-y-3">
                 <div
                   onClick={() => fileInputRef.current.click()}
-                  className="w-full h-56 rounded-2xl border-2 border-dashed border-gray-700 bg-gray-800 flex flex-col items-center justify-center cursor-pointer overflow-hidden relative"
+                  className="w-full h-56 rounded-2xl border-2 border-dashed border-gray-700 bg-gray-800 flex flex-col items-center justify-center cursor-pointer overflow-hidden"
                 >
                   {selectedMedia ? (
                     selectedMedia.type === 'IMAGE' ? (
@@ -304,9 +284,7 @@ export default function StoriesBar() {
                     )
                   ) : (
                     <div className="text-center p-4">
-                      <span className="text-3xl block mb-1">
-                        {storyType === 'PHOTO' ? '📷' : '📹'}
-                      </span>
+                      <span className="text-3xl block mb-1">{storyType === 'PHOTO' ? '📷' : '📹'}</span>
                       <span className="text-xs text-gray-400 font-bold">
                         Click to select {storyType.toLowerCase()} from gallery
                       </span>
@@ -323,19 +301,18 @@ export default function StoriesBar() {
               </div>
             )}
 
-            {/* PUBLISH BUTTON */}
             <button
               onClick={handlePublishStory}
               disabled={uploading}
               className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-3 rounded-full text-sm mt-4 transition active:scale-95 disabled:bg-gray-700"
             >
-              {uploading ? 'Sharing Story...' : '🔥 Post Status'}
+              {uploading ? 'Posting Story...' : '🔥 Post Status'}
             </button>
           </div>
         </div>
       )}
 
-      {/* STORY VIEWER MODAL */}
+      {/* STORY VIEWER */}
       {activeStory && (
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4">
           <button
@@ -351,9 +328,7 @@ export default function StoriesBar() {
                 alt="User"
                 className="w-8 h-8 rounded-full object-cover"
               />
-              <span className="text-xs font-bold text-white">
-                @{activeStory.user?.username || 'User'}
-              </span>
+              <span className="text-xs font-bold text-white">@{activeStory.user?.username || 'User'}</span>
             </div>
             {activeStory.mediaType === 'VIDEO' ? (
               <video src={activeStory.mediaUrl} autoPlay controls className="w-full h-[450px] object-cover" />
@@ -363,7 +338,6 @@ export default function StoriesBar() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
