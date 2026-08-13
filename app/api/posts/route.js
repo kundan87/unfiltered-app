@@ -5,7 +5,7 @@ export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const category = searchParams.get('category');
-    const tab = searchParams.get('tab'); // 'hot-takes' or 'reels'
+    const tab = searchParams.get('tab');
 
     let whereClause = {};
 
@@ -13,10 +13,8 @@ export async function GET(req) {
       whereClause = {
         OR: [{ type: 'VIDEO' }, { videoUrl: { not: null } }],
       };
-    } else {
-      if (category && category !== 'All') {
-        whereClause.category = category;
-      }
+    } else if (category && category !== 'All') {
+      whereClause = { category: category };
     }
 
     const posts = await prisma.video.findMany({
@@ -31,7 +29,7 @@ export async function GET(req) {
 
     return NextResponse.json({ posts });
   } catch (error) {
-    console.error('Fetch Posts Error:', error);
+    console.error('Fetch posts error:', error);
     return NextResponse.json({ posts: [] });
   }
 }

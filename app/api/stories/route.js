@@ -26,21 +26,19 @@ export async function POST(req) {
     const { userId, mediaUrl, mediaType } = body;
 
     if (!userId) {
-      return NextResponse.json({ error: 'User ID missing' }, { status: 400 });
+      return NextResponse.json({ error: 'User session required' }, { status: 401 });
     }
 
-    // Auto-sync or verify user in Neon DB
-    let user = await prisma.user.findUnique({ where: { id: userId } });
-
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          id: userId,
-          username: `user_${userId.slice(-6)}`,
-          email: `${userId}@unfiltered.app`,
-        },
-      });
-    }
+    // Auto-create user record if missing in DB
+    const user = await prisma.user.upsert({
+      where: { id: userId },
+      update: {},
+      create: {
+        id: userId,
+        username: `user_${userId.slice(-6)}`,
+        email: `${userId}@unfiltered.app`,
+      },
+    });
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
@@ -55,7 +53,7 @@ export async function POST(req) {
 
     return NextResponse.json({ success: true, story });
   } catch (error) {
-    console.error('Story Error:', error);
-    return NextResponse.json({ error: error.message || 'Story upload failed' }, { status: 500 });
+    console.error('Story upload error:', error);
+    return NextResponse.json({ error: 'Failed to upload story' }, { status: 500 });
   }
 }

@@ -1,63 +1,53 @@
 import { NextResponse } from 'next/server';
 
 export async function GET(req) {
-  const { searchParams } = new URL(req.url);
-  let url = searchParams.get('url');
-
-  if (!url) {
-    return NextResponse.json({ error: 'URL is required' }, { status: 400 });
-  }
-
-  if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    url = 'https://' + url;
-  }
-
   try {
-    const res = await fetch(url, {
+    const { searchParams } = new URL(req.url);
+    let targetUrl = searchParams.get('url');
+
+    if (!targetUrl) {
+      return NextResponse.json({ error: 'URL parameter is missing' }, { status: 400 });
+    }
+
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+      targetUrl = 'https://' + targetUrl;
+    }
+
+    const res = await fetch(targetUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
       },
+      next: { revalidate: 3600 },
     });
 
     const html = await res.text();
 
-    const getMetaTag = (attr, value) => {
+    const getMeta = (prop) => {
       const match =
-        html.match(new RegExp(`<meta[^>]*${attr}=["']${value}["'][^>]*content=["']([^"']*)["']`, 'i')) ||
-        html.match(new RegExp(`<meta[^>]*content=["']([^"']*)["'][^>]*${attr}=["']${value}["']`, 'i'));
+        html.match(new RegExp(`<meta[^>]*property=["']${prop}["'][^>]*content=["']([^"']*)["']`, 'i')) ||
+        html.match(new RegExp(`<meta[^>]*content=["']([^"']*)["'][^>]*property=["']${prop}["']`, 'i')) ||
+        html.match(new RegExp(`<meta[^>]*name=["']${prop}["'][^>]*content=["']([^"']*)["']`, 'i'));
       return match ? match[1] : null;
     };
 
     const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
 
-    const title =
-      getMetaTag('property', 'og:title') ||
-      getMetaTag('name', 'twitter:title') ||
-      (titleMatch ? titleMatch[1] : url);
-
-    const description =
-      getMetaTag('property', 'og:description') ||
-      getMetaTag('name', 'description') ||
-      getMetaTag('name', 'twitter:description') ||
-      '';
-
-    const image =
-      getMetaTag('property', 'og:image') ||
-      getMetaTag('name', 'twitter:image') ||
-      '';
+    const title = getMeta('og:title') || getMeta('twitter:title') || (titleMatch ? titleMatch[1] : targetUrl);
+    const description = getMeta('og:description') || getMeta('description') || '';
+    const image = getMeta('og:image') || getMeta('twitter:image') || '';
 
     return NextResponse.json({
       title: title.trim(),
       description: description.trim(),
       image: image,
-      url: url,
+      url: targetUrl,
     });
   } catch (error) {
     return NextResponse.json({
-      title: url,
+      title: searchParams.get('url') || '',
       description: '',
       image: '',
-      url: url,
+      url: searchParams.get('url') || '',
     });
   }
 }

@@ -13,16 +13,16 @@ export default function CreateTake({ onPostCreated }) {
   const [linkPreview, setLinkPreview] = useState(null);
   const [fetchingPreview, setFetchingPreview] = useState(false);
 
-  // Detect URL in caption and fetch Link Preview
+  // Live URL Scanner for Link Snippet
   useEffect(() => {
     const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/g;
     const match = caption.match(urlRegex);
 
     if (match && match[0]) {
-      const url = match[0];
-      if (linkPreview?.url !== url) {
+      const detectedUrl = match[0];
+      if (linkPreview?.url !== detectedUrl) {
         setFetchingPreview(true);
-        fetch(`/api/og-preview?url=${encodeURIComponent(url)}`)
+        fetch(`/api/og-preview?url=${encodeURIComponent(detectedUrl)}`)
           .then((res) => res.json())
           .then((data) => {
             setLinkPreview(data);
@@ -36,7 +36,7 @@ export default function CreateTake({ onPostCreated }) {
   }, [caption]);
 
   const handleSubmit = async () => {
-    if (!caption.trim()) return alert('Please enter something!');
+    if (!caption.trim()) return alert('Please write a take or enter a link!');
     if (!user) return alert('Please Sign In first!');
 
     setLoading(true);
@@ -58,7 +58,7 @@ export default function CreateTake({ onPostCreated }) {
         setCaption('');
         setLinkPreview(null);
         alert('Published successfully! 🔥');
-        if (onPostCreated) onPostCreated(); // Auto Refresh Feed
+        if (onPostCreated) onPostCreated();
       } else {
         alert(data.error || 'Failed to publish take');
       }
@@ -73,8 +73,8 @@ export default function CreateTake({ onPostCreated }) {
     <div className="bg-gray-900 border border-gray-800 p-5 rounded-3xl max-w-lg mx-auto my-4 shadow-xl">
       <h3 className="text-white font-black text-center mb-4 text-base">Create Unfiltered Take 💣</h3>
 
-      {/* Category Selection */}
-      <div className="flex gap-2 overflow-x-auto pb-3 no-scrollbar">
+      {/* Categories */}
+      <div className="flex gap-2 overflow-x-auto pb-3 no-scrollbar mb-3">
         {CATEGORIES.map((cat) => (
           <button
             key={cat}
@@ -89,23 +89,23 @@ export default function CreateTake({ onPostCreated }) {
         ))}
       </div>
 
-      {/* Text Area */}
+      {/* Input Textarea */}
       <textarea
         value={caption}
         onChange={(e) => setCaption(e.target.value)}
-        placeholder="What's on your mind? Paste a link or type..."
+        placeholder="What's on your mind? Type text or paste a web link..."
         className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-3 text-white text-sm focus:outline-none focus:border-red-600 resize-none h-28"
       />
 
-      {/* LINK PREVIEW SNIPPET BOX */}
+      {/* Live Snippet Preview Box */}
       {fetchingPreview && (
-        <p className="text-xs text-yellow-500 font-bold mt-2 animate-pulse">Fetching link preview snippet...</p>
+        <p className="text-xs text-yellow-500 font-bold mt-2 animate-pulse">Fetching website snippet...</p>
       )}
 
       {linkPreview && (
         <div className="mt-3 bg-gray-950 border border-gray-800 rounded-xl overflow-hidden p-3 flex gap-3 items-center">
           {linkPreview.image && (
-            <img src={linkPreview.image} alt="Preview" className="w-16 h-16 rounded-lg object-cover" />
+            <img src={linkPreview.image} alt="Preview" className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
           )}
           <div className="overflow-hidden">
             <h4 className="text-xs font-bold text-white truncate">{linkPreview.title}</h4>
@@ -115,7 +115,7 @@ export default function CreateTake({ onPostCreated }) {
         </div>
       )}
 
-      {/* Submit Button */}
+      {/* Post Button */}
       <button
         onClick={handleSubmit}
         disabled={loading}
