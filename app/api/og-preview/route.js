@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -17,7 +19,6 @@ export async function GET(req) {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
       },
-      next: { revalidate: 3600 },
     });
 
     const html = await res.text();
@@ -37,17 +38,17 @@ export async function GET(req) {
     const image = getMeta('og:image') || getMeta('twitter:image') || '';
 
     return NextResponse.json({
-      title: title.trim(),
-      description: description.trim(),
-      image: image,
+      title: title ? title.trim() : targetUrl,
+      description: description ? description.trim() : '',
+      image: image || '',
       url: targetUrl,
     });
   } catch (error) {
     return NextResponse.json({
-      title: searchParams.get('url') || '',
+      title: '',
       description: '',
       image: '',
-      url: searchParams.get('url') || '',
+      url: '',
     });
   }
 }
