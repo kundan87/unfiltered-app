@@ -3,7 +3,10 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET() {
   try {
-    const stories = await prisma.story.findMany({
+    const dbStory = prisma.story || prisma.Story;
+    if (!dbStory) return NextResponse.json({ stories: [] });
+
+    const stories = await dbStory.findMany({
       where: {
         expiresAt: { gt: new Date() },
       },
@@ -16,6 +19,7 @@ export async function GET() {
     });
     return NextResponse.json({ stories });
   } catch (error) {
+    console.error('GET Stories Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -28,9 +32,16 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Please sign in first' }, { status: 401 });
     }
 
-    let user = await prisma.user.findUnique({ where: { id: userId } });
+    const dbUser = prisma.user || prisma.User;
+    const dbStory = prisma.story || prisma.Story;
+
+    if (!dbUser || !dbStory) {
+      return NextResponse.json({ error: 'Database model initialization failed' }, { status: 500 });
+    }
+
+    let user = await dbUser.findUnique({ where: { id: userId } });
     if (!user) {
-      user = await prisma.user.create({
+      user = await dbUser.create({
         data: {
           id: userId,
           username: `user_${userId.slice(-6)}`,
@@ -42,7 +53,7 @@ export async function POST(req) {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24);
 
-    const story = await prisma.story.create({
+    const story = await dbStory.create({
       data: {
         userId: user.id,
         mediaUrl: mediaUrl || '',
@@ -54,6 +65,6 @@ export async function POST(req) {
     return NextResponse.json({ success: true, story });
   } catch (error) {
     console.error('Story API Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Story upload failed' }, { status: 500 });
   }
 }

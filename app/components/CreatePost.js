@@ -14,7 +14,7 @@ export default function CreatePost({ onPostSuccess }) {
   const [loadingLink, setLoadingLink] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Live Camera & Video Recording States
+  // Live Camera & Video Recording States (60 Seconds Max)
   const [showCamera, setShowCamera] = useState(false);
   const [cameraMode, setCameraMode] = useState('PHOTO'); // 'PHOTO' | 'VIDEO'
   const [isRecording, setIsRecording] = useState(false);
@@ -27,7 +27,7 @@ export default function CreatePost({ onPostSuccess }) {
   const timerIntervalRef = useRef(null);
   const galleryInputRef = useRef(null);
 
-  // Auto-detect Link in Textarea & Fetch Preview
+  // Auto Link Detection in Textarea
   useEffect(() => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const foundUrls = caption.match(urlRegex);
@@ -59,7 +59,6 @@ export default function CreatePost({ onPostSuccess }) {
     }
   };
 
-  // Live Camera Start
   const startCamera = async () => {
     setShowCamera(true);
     setCameraMode('PHOTO');
@@ -105,7 +104,6 @@ export default function CreatePost({ onPostSuccess }) {
     setRecordTime(0);
   };
 
-  // Photo Capture & Canvas Compression
   const capturePhoto = () => {
     const video = videoRef.current;
     if (!video) return;
@@ -121,13 +119,14 @@ export default function CreatePost({ onPostSuccess }) {
     stopCamera();
   };
 
-  // Compressed Video Recording (Max 15 seconds)
+  // 60-Second Compressed Video Recording
   const startRecording = () => {
     recordedChunksRef.current = [];
     const stream = streamRef.current;
     if (!stream) return;
 
-    const options = { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 400000 };
+    // 300 Kbps bitrate keeps 1 min video under ~2.2MB
+    const options = { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 300000 };
 
     try {
       const mediaRecorder = new MediaRecorder(
@@ -158,9 +157,9 @@ export default function CreatePost({ onPostSuccess }) {
       setRecordTime(0);
       timerIntervalRef.current = setInterval(() => {
         setRecordTime((prev) => {
-          if (prev >= 14) {
+          if (prev >= 59) {
             stopRecording();
-            return 15;
+            return 60;
           }
           return prev + 1;
         });
@@ -184,8 +183,8 @@ export default function CreatePost({ onPostSuccess }) {
 
     const isVideo = file.type.startsWith('video/');
 
-    if (isVideo && file.size > 8 * 1024 * 1024) {
-      return alert('Video file is too large! Please choose a video under 8MB.');
+    if (isVideo && file.size > 12 * 1024 * 1024) {
+      return alert('Video file is too large! Please choose a video under 12MB.');
     }
 
     const reader = new FileReader();
@@ -254,6 +253,12 @@ export default function CreatePost({ onPostSuccess }) {
     }
   };
 
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
     <div className="max-w-md mx-auto p-5 bg-gray-900 border border-gray-800 rounded-3xl mt-4 shadow-2xl relative">
       <h2 className="text-white font-black text-center text-lg mb-4 select-none">Create Unfiltered Take 💣</h2>
@@ -314,7 +319,7 @@ export default function CreatePost({ onPostSuccess }) {
           <div className="relative rounded-2xl overflow-hidden border border-gray-700 bg-black max-h-48 flex items-center justify-center">
             <button
               onClick={() => setMedia(null)}
-              className="absolute top-2 right-2 bg-black/80 text-white rounded-full text-xs w-6 h-6 flex items-center justify-center font-bold"
+              className="absolute top-2 right-2 bg-black/80 text-white rounded-full text-xs w-6 h-6 flex items-center justify-center font-bold z-10"
             >
               ✕
             </button>
@@ -386,7 +391,7 @@ export default function CreatePost({ onPostSuccess }) {
                     cameraMode === 'VIDEO' ? 'bg-red-600 text-white' : 'text-gray-400'
                   }`}
                 >
-                  📹 Video (15s)
+                  📹 Video (1 min)
                 </button>
               </div>
             )}
@@ -394,7 +399,7 @@ export default function CreatePost({ onPostSuccess }) {
             {isRecording && (
               <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-red-600 text-white text-xs font-black px-3 py-1 rounded-full animate-pulse">
                 <span className="w-2 h-2 rounded-full bg-white"></span>
-                <span>REC 00:{recordTime.toString().padStart(2, '0')} / 15s</span>
+                <span>REC {formatTime(recordTime)} / 01:00</span>
               </div>
             )}
 

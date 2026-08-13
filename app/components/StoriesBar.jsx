@@ -79,8 +79,8 @@ export default function StoriesBar() {
 
     const isVideo = file.type.startsWith('video/');
 
-    if (isVideo && file.size > 8 * 1024 * 1024) {
-      return alert('Video is too large! Please choose a video under 8MB.');
+    if (isVideo && file.size > 12 * 1024 * 1024) {
+      return alert('Video is too large! Please choose a video under 12MB.');
     }
 
     const reader = new FileReader();

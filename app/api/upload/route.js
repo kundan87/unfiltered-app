@@ -10,10 +10,18 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Please sign in first' }, { status: 401 });
     }
 
-    // Auto sync user to Prisma DB if missing
-    let user = await prisma.user.findUnique({ where: { id: clerkUserId } });
+    // Safe Prisma Model Access
+    const dbUser = prisma.user || prisma.User;
+    const dbPost = prisma.post || prisma.Post;
+
+    if (!dbUser || !dbPost) {
+      return NextResponse.json({ error: 'Database model initialization failed' }, { status: 500 });
+    }
+
+    // Auto-sync or find user safely
+    let user = await dbUser.findUnique({ where: { id: clerkUserId } });
     if (!user) {
-      user = await prisma.user.create({
+      user = await dbUser.create({
         data: {
           id: clerkUserId,
           username: `user_${clerkUserId.slice(-6)}`,
@@ -22,7 +30,7 @@ export async function POST(req) {
       });
     }
 
-    const post = await prisma.post.create({
+    const post = await dbPost.create({
       data: {
         userId: user.id,
         caption: caption || '',
@@ -37,6 +45,6 @@ export async function POST(req) {
     return NextResponse.json({ success: true, post });
   } catch (error) {
     console.error('Upload API Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Upload failed' }, { status: 500 });
   }
 }
